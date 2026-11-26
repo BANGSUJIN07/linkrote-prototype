@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>링크로테 프로토타입</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 맨 위 줄: 서비스 이름 + "지금 보는 사람" 선택 상자 (로그인 대신 역할을 바꿔 가며 시험합니다) -->
+  <header class="topbar">
+    <div class="brand">링크로테 <small>LinkRote 로컬 프로토타입</small></div>
+    <div class="viewer">
+      <label for="viewerSelect">지금 보는 사람</label>
+      <select id="viewerSelect"></select>
+    </div>
+  </header>
+
+  <!-- 시험용 안내: 항상 보이게 둡니다 -->
+  <div class="notice-bar">
+    시험용 화면입니다. 로그인이 없고, 데이터는 <b>이 컴퓨터의 이 브라우저에만</b> 저장돼요(기록을 지우면 사라져요).
+    <b>가짜 이름과 가짜 연락처만</b> 쓰고, 주민번호·계좌번호·주소 같은 민감한 정보는 적지 마세요.
+    <b>운영자 화면 &gt; 설정·백업(A8)</b>에서 백업 파일을 내려받아 두세요.
+    <span id="storageWarn"></span>
+  </div>
+
+  <!-- 메뉴: app.js가 채웁니다 -->
+  <nav id="menu" class="menu"></nav>
+
+  <!-- 화면이 그려지는 곳 -->
+  <main id="app" class="main"></main>
+
+  <!-- 스크립트는 일반 방식으로, 아래 순서대로 불러옵니다 (type="module" 쓰지 않기: file://에서 막힘) -->
+  <script src="js/config.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/views-participant.js"></script>
+  <script src="js/views-admin.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

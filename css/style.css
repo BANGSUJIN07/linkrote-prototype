@@ -1,0 +1,71 @@
+/* 링크로테 프로토타입 모양(색, 글자 크기, 간격) 설정 파일 */
+/* 색을 바꾸고 싶으면 아래 :root 안의 색 값만 고치면 됩니다. (레몬 테마) */
+:root {
+  --lemon: #ffe94d;      /* 레몬색: 상단 띠, 버튼, 선택된 메뉴 바탕 */
+  --on-lemon: #3d3300;   /* 레몬색 바탕 위에 쓰는 어두운 글자색 */
+  --lemon-line: #c9a900; /* 레몬색 버튼·메뉴의 테두리 */
+  --main: #5f6f00;       /* 제목·강조 글자색(진한 라임 올리브, 밝은 바탕에서 잘 읽힘) */
+  --main-light: #fff3a8; /* 연한 레몬: 표 머리글, 태그 바탕 */
+  --accent: #7cb518;     /* 포인트 색(라임 그린) */
+  --bg: #fffce6;         /* 연한 레몬 배경(배경 그라데이션이 안 될 때의 기본색) */
+  --card: #ffffff;
+  --text: #222;
+  --muted: #5f5f50;
+  --line: #ecdf94;
+  --err: #b3261e;
+  --err-bg: #fdecea;
+  --ok-bg: #e6f4ea;
+  --warn-bg: #ffe8cc;    /* 안내·경고: 레몬색과 구분되도록 연한 복숭아색 */
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Malgun Gothic", "맑은 고딕", sans-serif; background-color: var(--bg); background-image: linear-gradient(180deg, #fff6a8 0%, #fffbd0 220px, #fffef2 100%); background-attachment: fixed; color: var(--text); font-size: 15px; line-height: 1.55; min-height: 100vh; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: var(--lemon); color: var(--on-lemon); padding: 10px 16px; border-bottom: 2px solid var(--lemon-line); }
+.brand { font-size: 20px; font-weight: bold; }
+.brand small { font-size: 12px; font-weight: normal; opacity: .85; margin-left: 6px; }
+.viewer label { margin-right: 6px; font-size: 13px; }
+.viewer select { padding: 5px 8px; font-size: 14px; }
+
+.notice-bar { background: var(--warn-bg); padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f0cfa6; }
+
+.menu { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; background: rgba(255, 255, 255, .85); border-bottom: 1px solid var(--line); align-items: center; }
+.menu .group-title { font-size: 12px; color: var(--muted); margin: 0 4px 0 10px; }
+.menu a { text-decoration: none; color: var(--main); border: 1px solid var(--main); padding: 4px 10px; border-radius: 16px; font-size: 13px; background: #fff; }
+.menu a.active { background: var(--lemon); color: var(--on-lemon); border-color: var(--lemon-line); font-weight: bold; }
+
+.main { max-width: 1080px; margin: 0 auto; padding: 16px; }
+h2 { margin: 4px 0 12px; color: var(--main); }
+h3 { margin: 18px 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(150, 125, 0, .12); }
+.hint { color: var(--muted); font-size: 13px; }
+.small { font-size: 12px; }
+
+.flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; border: 1px solid var(--line); }
+.flash.ok { background: var(--ok-bg); }
+.flash.err { background: var(--err-bg); color: var(--err); }
+.flash.warn { background: var(--warn-bg); }
+
+label.block { display: block; margin: 10px 0 3px; font-weight: bold; font-size: 14px; }
+input[type=text], input[type=number], input[type=date], input[type=email], select, textarea { padding: 6px 8px; font-size: 14px; border: 1px solid #c4b24a; border-radius: 4px; font-family: inherit; max-width: 100%; background: #fff; }
+input[type=text], textarea { width: 100%; max-width: 480px; }
+textarea { min-height: 70px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+
+button, .btn { cursor: pointer; font-family: inherit; font-size: 14px; padding: 6px 12px; border-radius: 5px; border: 1px solid var(--lemon-line); background: var(--lemon); color: var(--on-lemon); font-weight: bold; }
+button.secondary { background: #fff; color: var(--main); border-color: var(--main); font-weight: normal; }
+button.danger { background: #fff; color: var(--err); border-color: var(--err); font-weight: normal; }
+button:disabled { background: #e8e6d8; color: #8a8a7a; border-color: #cfcdbd; cursor: not-allowed; font-weight: normal; }
+
+table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13px; }
+th, td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; vertical-align: top; }
+th { background: var(--main-light); }
+.tablewrap { overflow-x: auto; margin-bottom: 12px; }
+
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: var(--main-light); color: var(--main); }
+.tag.warn { background: var(--warn-bg); color: #8a4b00; }
+.tag.err { background: var(--err-bg); color: var(--err); }
+.reason { color: var(--err); font-size: 12px; margin-top: 3px; }
+.pos { color: #1b6e3c; font-weight: bold; }
+.neg { color: var(--err); font-weight: bold; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.big { font-size: 28px; font-weight: bold; color: var(--main); }

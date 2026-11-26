@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>링크로테 규칙 자동 점검</title>
+  <style>
+    body { font-family: "Malgun Gothic", sans-serif; margin: 20px; line-height: 1.5; }
+    h1 { font-size: 20px; }
+    #summary { font-size: 18px; font-weight: bold; margin: 10px 0 16px; padding: 8px 12px; border-radius: 6px; }
+    #summary.ok { background: #e6f4ea; color: #1b6e3c; }
+    #summary.fail { background: #fdecea; color: #b3261e; }
+    li { margin: 4px 0; }
+    .pass { color: #1b6e3c; }
+    .fail { color: #b3261e; font-weight: bold; }
+    .msg { color: #b3261e; font-size: 13px; display: block; margin-left: 18px; }
+  </style>
+</head>
+<body>
+  <h1>링크로테 규칙 자동 점검 (test.html)</h1>
+  <p>이 페이지는 열자마자 규칙(rules.js)을 자동으로 시험합니다. 실제 저장된 데이터는 건드리지 않아요. 아래 목록이 모두 "통과"이면 정상입니다.</p>
+  <div id="summary"></div>
+  <ol id="list"></ol>
+
+  <script src="js/config.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/rules.js"></script>
+  <script>
+    /* 시험 도우미: test(이름, 함수) 로 시험을 등록하고, 함수 안에서 check(조건, 설명)을 씁니다. */
+    var R = LR.rules, S0 = LR.store;
+    var tests = [];
+    function test(name, fn) { tests.push({ name: name, fn: fn }); }
+    function check(cond, what) { if (!cond) throw new Error('실패: ' + what); }
+
+    // 시험용 참가자 만들기 (field: 배정된 분야, gift: 가입 선물 조각)
+    function addP(s, name, field, gift, contact) {
+      var p = { id: S0.newId(s, 'p'), name: name, pref1: field, pref2: 'Z', assignedField: field,
+                assignStatus: field ? '1순위배정' : '대기', contact: contact || '', consentMsg: true,
+                firstStage: '시범', stages: { '시범': true, '스왑': false, '정식': false }, notified: false };
+      s.participants.push(p);
+      if (gift) R.addLedger(s, p.id, gift, '가입선물', null, '');
+      return p;
+    }
+    function addCard(s, ownerId) {
+      var c = { id: S0.newId(s, 'c'), ownerId: ownerId, text: '시험 카드', status: '열림', createdAt: '' };
+      s.helpCards.push(c); return c;
+    }
+    // 교환 한 건을 응답 -> 확정 -> 완료 -> 고마움 -> 정산까지 진행
+    function fullExchange(s, giver, receiver, units) {
+      var card = addCard(s, receiver.id);
+      var r = R.respond(s, giver.id, card.id, units, '시험 재능'); check(r.ok, '응답 단계: ' + r.reason);
+      var id = r.exchange.id;
+      var c = R.confirmExchange(s, id); check(c.ok, '확정 단계: ' + c.reason);
+      check(R.completeExchange(s, id).ok, '완료 단계');
+      check(R.writeThanks(s, id, giver.id, '고마워요 1').ok, '고마움 카드(주는 사람)');
+      check(R.writeThanks(s, id, receiver.id, '고마워요 2').ok, '고마움 카드(받는 사람)');
+      var st = R.settle(s, id); check(st.ok, '정산 단계: ' + st.reason);
+      return R.findById(s.exchanges, id);
+    }
+    // 1순위 분야별 인원으로 참가자 목록 만들기: {A:10,B:8,...}
+    function crowd(counts) {
+      var list = [], n = 0;
+      Object.keys(counts).forEach(function (f) {
+        for (var i = 0; i < counts[f]; i++) { n++; list.push({ id: 'q' + n, pref1: f, pref2: 'A' === f ? 'B' : 'A' }); }
+      });
+      return list;
+    }
+
+    /* ---------------- S1 ~ S8 (개발 계획서 9장) ---------------- */
+
+    test('S1 분야 배정: 1순위 A10,B8,C6,D3 -> A,B,C 운영 / 1순위D·2순위A는 A에 2순위배정 / 1순위D·2순위E는 대기', function () {
+      var list = crowd({ A: 10, B: 8, C: 6 });
+      list.push({ id: 'x2', pref1: 'D', pref2: 'A' });   // 2순위배정 예상
+      list.push({ id: 'y', pref1: 'D', pref2: 'E' });    // 대기 예상
+      list.push({ id: 'z', pref1: 'D', pref2: 'B' });    // D가 총 3명이 되도록
+      var res = R.assignFields(list, 3);
+      check(!res.needsChoice, '동점이 아니므로 선택이 필요 없어야 함');
+      check(res.operating.slice().sort().join(',') === 'A,B,C', '운영 분야는 A,B,C (실제: ' + res.operating + ')');
+      check(res.results['x2'].assignedField === 'A' && res.results['x2'].assignStatus === '2순위배정', '1순위D·2순위A -> A 2순위배정');
+      check(res.results['y'].assignedField === null && res.results['y'].assignStatus === '대기', '1순위D·2순위E -> 대기');
+      check(res.results['q1'].assignStatus === '1순위배정', '1순위가 운영되는 사람은 1순위배정');
+    });
+
+    test('S2 동점: C와 D가 같은 인원이면 자동 결정하지 않고 "운영자 선택" 상태를 돌려줌', function () {
+      var list = crowd({ A: 10, B: 8, C: 6, D: 6 });
+      var res = R.assignFields(list, 3);
+      check(res.needsChoice === true, 'needsChoice가 true여야 함');
+      check(res.tie && res.tie.tied.slice().sort().join(',') === 'C,D', '동점 분야는 C,D');
+      check(res.tie.pick === 1, '1개를 골라야 함');
+      check(Object.keys(res.results).length === 0, '선택 전에는 배정 결과를 만들지 않음');
+      var res2 = R.assignFields(list, 3, ['D']);
+      check(!res2.needsChoice && res2.operating.indexOf('D') >= 0 && res2.operating.indexOf('C') < 0, 'D를 고르면 A,B,D 운영');
+      var bad = R.assignFields(list, 3, ['A']);
+      check(bad.needsChoice === true, '동점 대상이 아닌 분야를 고르면 인정하지 않음');
+    });
+
+    test('S3 같은 분야 응답 불가 + 이유 문구 (확정할 때 한 번 더 검사)', function () {
+      var s = S0.emptyState();
+      var a1 = addP(s, '가', 'A', 3), a2 = addP(s, '나', 'A', 3), b1 = addP(s, '다', 'B', 3);
+      var card = addCard(s, a1.id);
+      var r = R.canRespond(s, a2.id, card);
+      check(r.ok === false && /같은 분야/.test(r.reason), '같은 분야는 응답 불가 + 이유(같은 분야) 문구');
+      check(R.canRespond(s, b1.id, card).ok === true, '다른 분야는 응답 가능');
+      check(R.canRespond(s, a1.id, card).ok === false, '자기 카드에는 응답 불가');
+      var w = addP(s, '대기자', null, 3);
+      check(R.canRespond(s, w.id, card).ok === false, '대기 상태 응답자는 불가');
+      var card2 = addCard(s, w.id);
+      check(R.canRespond(s, b1.id, card2).ok === false, '카드 주인이 대기이면 불가');
+      // 응답 뒤에 분야가 바뀌어 같은 분야가 되면 확정 단계에서 막혀야 함
+      var resp = R.respond(s, b1.id, card.id, 1, '');
+      check(resp.ok, '다른 분야 응답은 만들어짐');
+      b1.assignedField = 'A';
+      var cf = R.confirmExchange(s, resp.exchange.id);
+      check(cf.ok === false && /같은 분야/.test(cf.reason), '확정 때 한 번 더 막힘');
+    });
+
+    test('S4 마이너스 한도: 잔액 -1인 사람이 2단위 받으면 막힘, 1단위는 허용(그 뒤 -2)', function () {
+      var s = S0.emptyState();
+      var giver = addP(s, '주는이', 'A', 3), recv = addP(s, '받는이', 'B', 3);
+      fullExchange(s, giver, recv, 1);   // 둘 다 첫 교환을 끝냄(이후에는 2단위도 가능한 상태)
+      R.manualAdjust(s, recv.id, -1 - R.balance(s, recv.id), '시험: 잔액을 -1로 맞춤');
+      check(R.balance(s, recv.id) === -1, '잔액이 -1');
+      var card2 = addCard(s, recv.id);
+      var r2 = R.respond(s, giver.id, card2.id, 2, '');
+      check(r2.ok, '응답은 만들어짐(한도는 확정 때 검사): ' + r2.reason);
+      var c2 = R.confirmExchange(s, r2.exchange.id);
+      check(c2.ok === false && /마이너스 한도/.test(c2.reason), '2단위는 확정 막힘 + 이유 문구');
+      var card1 = addCard(s, recv.id);
+      var r1 = R.respond(s, giver.id, card1.id, 1, '');
+      check(r1.ok, '1단위 응답');
+      var c1 = R.confirmExchange(s, r1.exchange.id);
+      check(c1.ok === true, '1단위는 확정 허용: ' + c1.reason);
+      R.completeExchange(s, r1.exchange.id);
+      R.writeThanks(s, r1.exchange.id, giver.id, 'a'); R.writeThanks(s, r1.exchange.id, recv.id, 'b');
+      var st = R.settle(s, r1.exchange.id);
+      check(st.ok, '정산 허용: ' + st.reason);
+      check(R.balance(s, recv.id) === -2, '같은 두 사람이라 보너스 없이 잔액 -2 (실제 ' + R.balance(s, recv.id) + ')');
+      // 이제 -2이므로 1단위도 더 못 받음
+      var card3 = addCard(s, recv.id);
+      var r3 = R.respond(s, giver.id, card3.id, 1, ''); check(r3.ok, '응답');
+      check(R.confirmExchange(s, r3.exchange.id).ok === false, '잔액 -2에서는 더 받을 수 없음');
+    });
+
+    test('S5 정산: 1단위 정산 시 주는 사람 +1, 받는 사람 -1 / 새 분야 첫 교환이면 둘 다 +1 / 같은 분야 조합 두 번째는 보너스 없음', function () {
+      var s = S0.emptyState();
+      var a1 = addP(s, 'A1', 'A', 3), b1 = addP(s, 'B1', 'B', 3), b2 = addP(s, 'B2', 'B', 3);
+      // B1(주는 사람) -> A1(받는 사람) 첫 교환
+      fullExchange(s, b1, a1, 1);
+      check(R.balance(s, b1.id) === 3 + 1 + 1, '주는 사람 +1 +보너스1 = 5 (실제 ' + R.balance(s, b1.id) + ')');
+      check(R.balance(s, a1.id) === 3 - 1 + 1, '받는 사람 -1 +보너스1 = 3 (실제 ' + R.balance(s, a1.id) + ')');
+      // 같은 두 사람 두 번째 교환: 보너스 없음
+      var ex2 = fullExchange(s, b1, a1, 1);
+      check(ex2.newFieldBonus === false, '두 번째 교환은 보너스 없음');
+      check(R.balance(s, b1.id) === 6, '주는 사람 6 (실제 ' + R.balance(s, b1.id) + ')');
+      check(R.balance(s, a1.id) === 2, '받는 사람 2 (실제 ' + R.balance(s, a1.id) + ')');
+      // A1과 B2의 첫 교환: A1은 이미 B분야와 정산 경험이 있어 보너스 없음, B2는 처음이라 보너스
+      fullExchange(s, b2, a1, 1);
+      check(R.balance(s, b2.id) === 5, 'B2는 새 분야 보너스 받음 5 (실제 ' + R.balance(s, b2.id) + ')');
+      check(R.balance(s, a1.id) === 1, 'A1은 B분야와 이미 정산 경험이 있어 보너스 없음 1 (실제 ' + R.balance(s, a1.id) + ')');
+      // 장부 줄 수: 정산은 적립/차감 두 줄(+보너스)
+      var bonusRows = s.ledger.filter(function (l) { return l.type === '새분야보너스'; }).length;
+      check(bonusRows === 3, '보너스 장부 줄 3개 (실제 ' + bonusRows + ')');
+      // 설정에서 보너스 대상을 "주는사람"으로 바꾸면 즉시 반영
+      var s2 = S0.emptyState(); s2.settings.bonusRecipient = '주는사람';
+      var p = addP(s2, 'P', 'A', 3), q = addP(s2, 'Q', 'B', 3);
+      fullExchange(s2, q, p, 1);
+      check(R.balance(s2, q.id) === 5 && R.balance(s2, p.id) === 2, '주는사람만 보너스 (실제 ' + R.balance(s2, q.id) + ',' + R.balance(s2, p.id) + ')');
+    });
+
+    test('S6 첫 교환은 2단위 이상 선택 불가', function () {
+      var s = S0.emptyState();
+      var g = addP(s, '주는이', 'A', 3), r = addP(s, '받는이', 'B', 3);
+      var card = addCard(s, r.id);
+      var bad = R.respond(s, g.id, card.id, 2, '');
+      check(bad.ok === false && /첫 교환/.test(bad.reason), '첫 교환 2단위는 막힘 + 이유 문구');
+      var ok = R.respond(s, g.id, card.id, 1, '');
+      check(ok.ok === true, '첫 교환 1단위는 허용');
+      var ck = R.checkUnits(s, g.id, r.id, 0, null);
+      check(ck.ok === false, '0단위도 불가');
+    });
+
+    test('S7 연락처: 응답 상태에서는 안 보이고 확정 뒤에만 보임 / 운영자 화면은 예외', function () {
+      var s = S0.emptyState();
+      var g = addP(s, '주는이', 'A', 3, 'giver@example.com'), r = addP(s, '받는이', 'B', 3, '010-0000-0002');
+      var card = addCard(s, r.id);
+      var ex = R.respond(s, g.id, card.id, 1, '').exchange;
+      check(R.contactFor(s, g.id, ex).visible === false, '응답 상태: 주는 사람에게 안 보임');
+      check(R.contactFor(s, r.id, ex).visible === false, '응답 상태: 받는 사람에게 안 보임');
+      check(R.contactFor(s, 'admin', ex).visible === true, '운영자는 예외로 보임');
+      R.confirmExchange(s, ex.id);
+      var cg = R.contactFor(s, g.id, ex), cr = R.contactFor(s, r.id, ex);
+      check(cg.visible && cg.text === '010-0000-0002', '확정 뒤 주는 사람이 받는 사람 연락처를 봄');
+      check(cr.visible && cr.text === 'giver@example.com', '확정 뒤 받는 사람이 주는 사람 연락처를 봄');
+      var other = addP(s, '남', 'C', 3, 'x@example.com');
+      check(R.contactFor(s, other.id, ex).visible === false, '당사자가 아니면 안 보임');
+      R.cancelExchange(s, ex.id);
+      check(R.contactFor(s, g.id, ex).visible === false, '취소되면 다시 가려짐');
+    });
+
+    test('S8 알림 대상: 대기+수신동의만 포함, 동의 안 한 대기자·2순위배정자는 제외, 발송 예정일 = 시작일-21일', function () {
+      var s = S0.emptyState();
+      var w1 = addP(s, '대기동의', null, 3, 'w1@example.com'); w1.assignStatus = '대기'; w1.consentMsg = true;
+      var w2 = addP(s, '대기비동의', null, 3, 'w2@example.com'); w2.assignStatus = '대기'; w2.consentMsg = false;
+      var sec = addP(s, '2순위', 'A', 3, 's@example.com'); sec.assignStatus = '2순위배정'; sec.consentMsg = true;
+      s.settings.nextStageStartDate = '2027-03-22';
+      var t = R.notifyTargets(s);
+      var names = t.list.map(function (p) { return p.name; });
+      check(names.length === 1 && names[0] === '대기동의', '목록은 대기동의 한 명뿐 (실제 ' + names + ')');
+      check(t.sendDate === '2027-03-01', '발송 예정일 2027-03-01 (실제 ' + t.sendDate + ')');
+      s.settings.nextStageStartDate = '';
+      check(R.notifyTargets(s).sendDate === null, '시작일이 비어 있으면 발송 예정일 없음');
+    });
+
+    /* ---------------- 추가 점검 (계획서 완료 기준) ---------------- */
+
+    test('추가: 가입하면 잔액 3조각(장부 기록), 1·2순위가 같으면 저장 안 됨, 연락처/메뉴 검사', function () {
+      var s = S0.emptyState();
+      var ok = R.signup(s, { name: '시험', pref1: 'A', pref2: 'B', contact: '010-1234-5678', consentMsg: true, menus: ['디자인 30분'] });
+      check(ok.ok, '가입 성공');
+      check(R.balance(s, ok.participant.id) === 3, '가입 직후 잔액 3');
+      check(s.ledger.length === 1 && s.ledger[0].type === '가입선물', '장부에 가입선물 한 줄');
+      var same = R.signup(s, { name: '시험2', pref1: 'A', pref2: 'a', contact: '', consentMsg: false, menus: ['x'] });
+      check(!same.ok && s.participants.length === 1, '1·2순위가 같으면 저장 안 됨');
+      var nomenu = R.signup(s, { name: '시험3', pref1: 'A', pref2: 'B', menus: ['', ' '] });
+      check(!nomenu.ok, '재능 메뉴가 없으면 저장 안 됨');
+      var consentNoContact = R.signup(s, { name: '시험4', pref1: 'A', pref2: 'B', consentMsg: true, menus: ['x'] });
+      check(!consentNoContact.ok, '연락처 없이 수신 동의만 하면 저장 안 됨');
+      var badContact = R.signup(s, { name: '시험5', pref1: 'A', pref2: 'B', contact: 'abc', menus: ['x'] });
+      check(!badContact.ok, '연락처 모양이 틀리면 저장 안 됨');
+      s.settings.signupGift = 5;
+      var p2 = R.signup(s, { name: '시험6', pref1: 'A', pref2: 'B', menus: ['x'] });
+      check(R.balance(s, p2.participant.id) === 5, '설정을 바꾸면 가입 선물도 즉시 바뀜');
+    });
+
+    test('추가: 노쇼는 차감 조각 수가 비어 있으면 처리 불가, 입력하면 차감 + 한도 경고', function () {
+      var s = S0.emptyState();
+      var g = addP(s, '주는이', 'A', 3), r = addP(s, '받는이', 'B', 3);
+      var card = addCard(s, r.id);
+      var ex = R.respond(s, g.id, card.id, 1, '').exchange;
+      R.confirmExchange(s, ex.id);
+      var blocked = R.markNoShow(s, ex.id, g.id);
+      check(blocked.ok === false && /정해지지 않았어요/.test(blocked.reason), '비어 있으면 막힘 + 이유');
+      s.settings.noShowPenalty = 6;
+      var done = R.markNoShow(s, ex.id, g.id);
+      check(done.ok && R.balance(s, g.id) === -3, '3 - 6 = -3 (실제 ' + R.balance(s, g.id) + ')');
+      check(/경고/.test(done.warning), '한도(-2) 아래이므로 경고 문구가 나옴');
+    });
+
+    test('추가: 수동 조정은 이유(메모) 없이 저장 불가', function () {
+      var s = S0.emptyState();
+      var p = addP(s, '가', 'A', 3);
+      check(R.manualAdjust(s, p.id, 2, '').ok === false, '메모 없으면 거부');
+      check(R.manualAdjust(s, p.id, 2, '   ').ok === false, '공백 메모도 거부');
+      check(R.manualAdjust(s, p.id, 2, '사정 있음').ok === true && R.balance(s, p.id) === 5, '메모 있으면 저장');
+    });
+
+    test('추가: 스탬프 - 다른 분야만, 같은 두 사람 중복 없음, 혜택은 필요 수가 비어 있으면 불가', function () {
+      var s = S0.emptyState();
+      var a = addP(s, 'a', 'A', 3), a2 = addP(s, 'a2', 'A', 3), b = addP(s, 'b', 'B', 3);
+      check(R.addStampPair(s, a.id, a2.id, null).ok === false, '같은 분야는 스탬프 없음');
+      check(R.addStampPair(s, a.id, b.id, null).ok === true && R.stampsTotal(s, a.id) === 1 && R.stampsTotal(s, b.id) === 1, '다른 분야는 둘 다 1개');
+      check(R.addStampPair(s, b.id, a.id, null).ok === false, '같은 두 사람 중복 불가');
+      var c = R.canRedeem(s, a.id);
+      check(c.ok === false && /정해지지 않았어요/.test(c.reason), '필요 스탬프 수가 비어 있으면 불가 + 이유');
+      s.settings.stampsPerBenefit = 1;
+      check(R.redeem(s, a.id, '공간 대여').ok === true && R.stampsAvailable(s, a.id) === 0, '숫자를 넣으면 교환 가능');
+      check(R.redeem(s, a.id, '전시 초대').ok === false, '스탬프가 없으면 불가');
+      // 재능 교환(정산)을 해도 스탬프는 자동 생성되지 않음
+      var s3 = S0.emptyState(); var x = addP(s3, 'x', 'A', 3), y = addP(s3, 'y', 'B', 3);
+      fullExchange(s3, x, y, 1);
+      check(s3.stamps.length === 0, '교환만으로 스탬프가 자동으로 생기지 않음');
+    });
+
+    test('추가: 팀 짜기 - 4개 분야 24명(팀 4명)이면 모든 팀이 서로 다른 4분야', function () {
+      var s = S0.emptyState();
+      ['A', 'B', 'C', 'D'].forEach(function (f) { for (var i = 0; i < 6; i++) addP(s, f + i, f, 3); });
+      var r = R.buildTeams(s);
+      check(r.ok && s.teams.length === 6, '6팀 (실제 ' + s.teams.length + ')');
+      var ids = {};
+      s.teams.forEach(function (t) {
+        check(t.memberIds.length === 4, '팀 인원 4');
+        check(R.teamDistinctFields(s, t) === 4, '한 팀에 서로 다른 분야 4개');
+        t.memberIds.forEach(function (id) { ids[id] = true; });
+      });
+      check(Object.keys(ids).length === 24, '24명이 중복 없이 모두 배치');
+    });
+
+    test('추가: 팀 짜기 - 3개 분야 24명이면 한 분야만 한 명 겹침(분야 3개 이상 포함)', function () {
+      var s = S0.emptyState();
+      ['A', 'B', 'C'].forEach(function (f) { for (var i = 0; i < 8; i++) addP(s, f + i, f, 3); });
+      R.buildTeams(s);
+      check(s.teams.length === 6, '6팀');
+      s.teams.forEach(function (t) { check(R.teamDistinctFields(s, t) === 3, '3개 분야가 모두 들어감 (실제 ' + R.teamDistinctFields(s, t) + ')'); });
+    });
+
+    test('추가: 지표 - 재방문율, 새 분야 첫 교환 비율, 연결 건수가 직접 센 값과 같음', function () {
+      var s = S0.emptyState();
+      s.settings.currentStage = '스왑';
+      var ps = [];
+      for (var i = 0; i < 10; i++) ps.push(addP(s, 'p' + i, i % 2 ? 'A' : 'B', 3));
+      // 앞 단계(시범) 참가자 10명 중 6명이 이번 단계(스왑)에도 옴, 새로 온 사람 2명 추가
+      for (var j = 0; j < 6; j++) ps[j].stages['스왑'] = true;
+      var n1 = addP(s, 'n1', 'A', 3); n1.stages = { '시범': false, '스왑': true, '정식': false }; n1.firstStage = '스왑';
+      var n2 = addP(s, 'n2', 'B', 3); n2.stages = { '시범': false, '스왑': true, '정식': false }; n2.firstStage = '스왑';
+      var m = R.metrics(s);
+      check(m.signups === 12, '가입자 12');
+      check(m.revisit.num === 6 && m.revisit.den === 10 && Math.abs(m.revisit.rate - 0.6) < 1e-9, '재방문율 6/10');
+      check(m.newcomers === 2 && m.continued === 6, '이어서 6, 새로 2');
+      var p0 = ps[0], p1 = ps[1], p2 = ps[2], p3 = ps[3];
+      fullExchange(s, p1, p0, 1);   // 새 분야 첫 교환 (보너스 있음)
+      fullExchange(s, p1, p0, 1);   // 두 번째 (보너스 없음)
+      fullExchange(s, p3, p2, 1);   // 새 분야 첫 교환
+      // 교환을 마친 뒤(시각이 더 늦은) 카드를 다시 올린 사람만 세므로, 1초 뒤 시각으로 카드를 올림
+      s.helpCards.push({ id: 'cc1', ownerId: p0.id, text: '또', status: '열림', createdAt: new Date(Date.now() + 1000).toISOString() });
+      R.addStampPair(s, p0.id, p1.id, null);
+      var m2 = R.metrics(s);
+      check(m2.settledCount === 3 && m2.newField.num === 2 && m2.newField.den === 3, '새 분야 첫 교환 2/3 (실제 ' + m2.newField.num + '/' + m2.newField.den + ')');
+      check(m2.exchangeLinks === 3, '재능 교환 연결 3건 (p0-p1 2번 + p2-p3 1번, 같은 상대와 2번이면 2건, 실제 ' + m2.exchangeLinks + ')');
+      check(m2.stampLinks === 1, '스탬프로 기록한 라운드 연결은 별도로 1건 (실제 ' + m2.stampLinks + ')');
+      check(m2.connections === 3 && m2.connectionBasis === '재능 교환', '기본 기준(재능 교환)이면 연결 성사 건수 3 (실제 ' + m2.connections + ')');
+      s.settings.connectionBasis = '라운드 스탬프';
+      var m3 = R.metrics(s);
+      check(m3.connections === 1 && m3.exchangeLinks === 3, '기준을 라운드 스탬프로 바꾸면 연결 성사 건수 1, 교환 연결은 그대로 3 (실제 ' + m3.connections + '/' + m3.exchangeLinks + ')');
+      check(m2.repeatRequesters === 1, '교환을 마친 뒤 카드를 다시 올린 사람 1명 (p0만. 다른 사람은 마친 뒤 올린 카드 없음, 실제 ' + m2.repeatRequesters + ')');
+    });
+
+    test('추가: 저장 내보내기/가져오기 변환이 데이터를 그대로 복원 + 잘못된 파일은 거부', function () {
+      var s = S0.emptyState();
+      var p = addP(s, '가', 'A', 3, '010-0000-0001');
+      var text = S0.serialize(s);
+      var back = S0.parse(text);
+      check(back.ok && back.state.participants.length === 1 && R.balance(back.state, p.id) === 3, '복원 성공');
+      check(S0.parse('이건 백업이 아님').ok === false, '글자가 깨진 파일 거부');
+      check(S0.parse('{"app":"other"}').ok === false, '다른 앱 파일 거부');
+    });
+
+    /* ---------------- 시험 실행과 결과 표시 ---------------- */
+    var pass = 0, fail = 0, list = document.getElementById('list');
+    tests.forEach(function (t) {
+      var li = document.createElement('li');
+      try {
+        t.fn();
+        li.className = 'pass'; li.textContent = '통과 - ' + t.name; pass++;
+      } catch (e) {
+        li.className = 'fail'; li.textContent = '실패 - ' + t.name; fail++;
+        var m = document.createElement('span'); m.className = 'msg'; m.textContent = e.message; li.appendChild(m);
+      }
+      list.appendChild(li);
+    });
+    var sum = document.getElementById('summary');
+    sum.textContent = (fail === 0 ? '모두 통과! ' : '실패가 있어요. ') + '통과 ' + pass + ' / 실패 ' + fail + ' (전체 ' + tests.length + ')';
+    sum.className = fail === 0 ? 'ok' : 'fail';
+    document.title = (fail === 0 ? '[통과] ' : '[실패 ' + fail + '] ') + '링크로테 규칙 점검';
+  </script>
+</body>
+</html>
