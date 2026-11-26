@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200" role="img" aria-label="잎이 달린 레몬">
+  <defs>
+    <radialGradient id="body" cx="38%" cy="32%" r="80%">
+      <stop offset="0%" stop-color="#fff9a8"/>
+      <stop offset="55%" stop-color="#ffe94d"/>
+      <stop offset="100%" stop-color="#f5c800"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9ad43a"/>
+      <stop offset="100%" stop-color="#5a9a10"/>
+    </linearGradient>
+  </defs>
+  <!-- 그림자 -->
+  <ellipse cx="130" cy="186" rx="86" ry="8" fill="#8a7400" opacity=".16"/>
+  <!-- 레몬 몸통 (양 끝이 뾰족한 모양) -->
+  <path d="M10 104 C14 100 20 98 26 96 C36 60 80 30 132 30 C184 30 226 60 236 96 C242 98 248 100 252 104 C248 108 242 110 236 112 C226 148 184 176 132 176 C80 176 36 148 26 112 C20 110 14 108 10 104 Z"
+        fill="url(#body)" stroke="#d9b000" stroke-width="3" stroke-linejoin="round"/>
+  <!-- 반짝이는 빛 -->
+  <path d="M58 82 C70 58 98 44 126 42" fill="none" stroke="#fffde0" stroke-width="9" stroke-linecap="round" opacity=".85"/>
+  <circle cx="52" cy="102" r="4" fill="#fffde0" opacity=".7"/>
+  <!-- 껍질의 작은 점 -->
+  <g fill="#e8b800" opacity=".55">
+    <circle cx="150" cy="70" r="2"/><circle cx="178" cy="94" r="2"/><circle cx="108" cy="124" r="2"/>
+    <circle cx="146" cy="142" r="2"/><circle cx="200" cy="120" r="2"/><circle cx="92" cy="96" r="2"/>
+    <circle cx="168" cy="122" r="2"/><circle cx="128" cy="96" r="2"/>
+  </g>
+  <!-- 꼭지와 잎 -->
+  <path d="M132 32 C132 24 134 18 138 12" fill="none" stroke="#7a5a1c" stroke-width="5" stroke-linecap="round"/>
+  <path d="M138 16 C156 -4 196 -2 214 14 C200 38 162 44 138 16 Z" fill="url(#leaf)" stroke="#4a8a00" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M142 18 C164 14 190 16 206 16" fill="none" stroke="#d9f59a" stroke-width="2.5" stroke-linecap="round" opacity=".9"/>
+</svg>
